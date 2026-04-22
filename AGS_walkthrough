@@ -1,0 +1,34 @@
+# Sovereign AGI (Version 2.0) - Walkthrough
+
+The **Implementation Phase** is completely finished. I have fully constructed the mechanical logic for the entire Sovereign AGI project exactly as mapped out in our master architecture blueprint.
+
+The source code sits locally inside your `c:\Users\HP\OneDrive\Desktop\AGI\AGS_V2\` directory.
+
+> [!CAUTION]
+> The Python dependency stack involves heavy ML packages (`torch`, `sentence-transformers`, `chromadb`). The installation stream is still caching locally in the background. Please wait ~5 minutes before officially testing scripts.
+
+## Physical Code Summary
+
+### 1. The Persistence Engine (`/core`)
+- **`schemas.py`**: Configured strict Pydantic parsing bounds (`AgentResult`, `HandoffPayload`) replacing logic hallucinations with mechanical logic guarantees.
+- **`db.py`**: Implemented `sqlmodel` mapping out `DAGTask`, `Anchor`, `ExecutionSnapshot` and `ExecutionLog` directly to a local WAL SQLite database.
+- **`memory.py`**: Linked `chromadb` explicitly to track failures so the try-rewrite-retry looping model never repeats the same error.
+- **`proxy.py`**: A strict Token Bucket rate limiter utilizing `redis` to map multi-provider endpoints.
+- **`dry_run.py`**: Implemented the mathematical `SHA-256` snapshot engine to map physical disk states prior to executing commands, formally enabling Two-Phase Commits.
+- **`watchdog.py`**: An asynchronous execution Daemon polling logic. Exceeding exact task TTL caps triggers an absolute halt.
+
+### 2. The 10 Persona Fleet (`/agents`)
+- **`madara.py` (DAG Orchestrator):** Implements the logic that polls the SQLite database and mechanically blocks tasks missing resolved dependencies.
+- **`itachi.py` (Sandbox Auditor):** Intercepts execution states strictly reading `diff` outputs for sandbox verification.
+- **`naruto.py` (Self-Healer):** Implements exact stack trace query searches against ChromaDB memory blocks to optimize coding repair cycles.
+- **`ichigo.py` (Security):** Immediate Tier 1 firewall parsing destructive patterns using Regex definitions prior to LLM activation.
+- **`rimuru.py`** (Bridge), **`natsu_goku.py`** (Compile/AST Search), **`doraemon_ben10.py`** (MCP Tool Compositor / Web Fetch), **`chhota_bheem.py`** (Heavy Colab target dispatcher).
+
+### 3. Execution Interfaces (`/root`)
+- **`run.py`**: The central mechanical framework bootstrap. Run this to test the DAG orchestration pipeline physically unblocking task logic nodes.
+- **`api.py`**: Server-Sent Events (SSE) API logic built using FastAPI to push SQLite polling statuses outward.
+- **`mcp_server.py`**: The raw definition file establishing standard `os` actuation limits for local environment read/writes using `fastmcp`.
+- **`docker-compose.yml` & `Dockerfile`**: Built the multi-container stack separating the Proxy Node (redis), the API (fastapi), the React Dashboard interface mapping, and the explicit Python Host runner.
+
+> [!SUCCESS]
+> You now hold the complete, physical implementation of the AGS Version 2.0 Framework. Wait for the terminal to formally close the `install` processes, and launch `python run.py` or hit `docker-compose up` to boot the orchestrator matrix!

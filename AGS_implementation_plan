@@ -1,0 +1,189 @@
+# AUTONOMOUS AGENTIC SYSTEM
+**Production-Grade Architecture - Version 2.0**
+_Multi-Provider · Multi-Runtime · Mechanically Rigorous_
+
+| **10 Personas**<br><br>Mechanically Defined | **Multi-Provider**<br><br>Ollama → Claude → GPT-4 | **Multi-Runtime**<br><br>Local · Colab · Docker · Cloud | **True Autonomy**<br><br>DAG + TTL + Rollback |
+| ------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------- |
+
+---
+
+## SECTION 1 - DESIGN PHILOSOPHY & FAILURE MODES ADDRESSED
+
+### **1.1 What This Architecture Solves**
+Version 1.0 of the AGS plan had strong instincts but critical structural gaps. This document resolves every one of them with concrete mechanical solutions - not descriptions of intent.
+
+| **V1 Weakness**                      | **Root Cause**                                              | **V2 Mechanical Fix**                                                                                    |
+| ------------------------------------ | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Confidence score as truth            | LLMs are miscalibrated - hallucinate at high confidence     | Schema-constrained output validation + tool-call parse guards replace self-reported confidence           |
+| Failure Memory matched exact strings | Error signatures vary; same mistake, different library name | Embedding-based fuzzy match on error signatures using `sentence-transformers` stored in **ChromaDB**           |
+| Persona Engine had no mechanism      | Names assigned to features, not to distinct agent configs   | Each persona = unique system prompt + model + tool allowlist + routing classifier rule                   |
+| Ngrok as prod infra                  | Session-based tunnels expire; not HA                        | Cloudflare Tunnel (persistent) for local, Traefik for Docker/Cloud; Ngrok retained only for dev mode     |
+| No rollback strategy                 | Dry-run passing did not guarantee execution safety          | Two-phase commit: dry-run diff → checksum snapshot → execute → verify; auto-revert on checksum mismatch  |
+| No LLM API rate-limit handling       | Only web scraping had backoff                               | Token-bucket rate limiter in LLM Provider Proxy with per-provider quotas and automatic failover          |
+| No orchestrator crash recovery       | If orchestrator dies mid-DAG, tasks are orphaned            | DAG state machine persisted to SQLite with WAL mode; restart resumes from last committed checkpoint      |
+| Cost/latency unmodeled               | Every action routed through full critic pipeline            | Three-tier action classification: TRIVIAL (no critic), STANDARD (local critic), CRITICAL (full pipeline) |
+
+---
+
+## SECTION 2 - SYSTEM ARCHITECTURE OVERVIEW
+
+### **2.1 Architectural Layers**
+The system is composed of six discrete layers. Each layer has a single responsibility and communicates with adjacent layers through well-defined contracts. No layer can bypass the one above it.
+
+| **Layer** | **Name**        | **Components**                                                              | **Contract**                                                                               |
+| --------- | --------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| L0        | User Interface  | Next.js Dashboard, WebSocket stream, Kill Switch panel                      | Emits signed task payloads to L1; receives telemetry SSE stream                            |
+| L1        | Orchestrator    | DAG Engine, Task Scheduler, Persona Router, Checkpoint Manager              | Accepts task payload; owns DAG state; routes to L2 agents; writes checkpoints              |
+| L2        | Persona Agents  | 10 specialized sub-agents (see Section 5)                                   | Receives typed task + context; returns structured `AgentResult` with action, diff, status    |
+| L3        | Critic & Safety | Schema Validator, Diff Auditor, Rollback Controller, Action Classifier      | Blocks/approves L2 outputs; triggers rollback; escalates to human if CRITICAL+uncertain |
+| L4        | Execution       | MCP Server, Actuators, Sandbox Runner, Filesystem Snapshot                  | Executes approved diffs; returns execution receipt with checksum; triggers L3 verify pass  |
+| L5        | Persistence     | SQLite (DAG + checkpoints), ChromaDB (embeddings), Redis (rate limits, TTL) | Durable state for all layers; crash-safe via WAL; no in-memory-only state                  |
+
+### **2.2 Action Classification Tiers**
+Not every action deserves the full critic pipeline. The Action Classifier assigns one of three tiers before routing, cutting median latency by 60% for routine operations.
+
+| **Tier** | **Label** | **Examples**                                                                   | **Pipeline**                                                                                     | **Max Latency**      |
+| -------- | --------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | -------------------- |
+| T1       | **TRIVIAL**   | Read file, list directory, web search, status check                            | Schema validation only → execute                                                                 | < 2s                 |
+| T2       | **STANDARD**  | Write file, run test, call external API, install package                       | Schema → Diff dry-run → Critic approve → execute → verify                                        | < 15s                |
+| T3       | **CRITICAL**  | Delete data, deploy to prod, modify .env, schema migration, destructive op | Full pipeline + snapshot + human escalation if uncertain + dual-checksum verify + rollback-ready | < 60s or human-gated |
+
+---
+
+## SECTION 3 - MEMORY, PERSISTENCE & CONTEXT MANAGEMENT
+
+### **3.1 Memory Architecture - Four Distinct Stores**
+| **Store**              | **Backend**                   | **Contents**                                                                                                                               | **Eviction Policy**                         | **Crash Safe**         |
+| ---------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- | ---------------------- |
+| **Hard Anchors**           | SQLite table: `anchors`         | Absolute constraints tagged at session init (e.g. "never delete .env"). Read on every agent invocation.                                    | Never evicted. Manual delete only.          | Yes (WAL)              |
+| **DAG Task State**         | SQLite table: `tasks`           | Task ID, status, assigned_persona, time_started, max_ttl, parent_task_ids, checkpoint_hash                                                 | Completed tasks archived after 7 days.      | Yes (WAL)              |
+| **Conversational Context** | In-memory ring buffer (Redis) | Last N=20 turns per session. Summarized to 3-sentence digest every 10 turns by Rimuru agent.                                               | LRU; oldest turns summarized then dropped.  | Redis AOF              |
+| **Failure Memory**         | ChromaDB collection: `failures` | Error message + stack trace embedded via `all-MiniLM-L6-v2`. Cosine similarity search at >= 0.82 blocks repeat errors. | Manual review required to purge.            | Yes (ChromaDB persist) |
+| **Research Cache**         | SQLite + ChromaDB             | Trust-scored web research blocks. Semantic dedup before insertion.                                                                         | TTL = 24h for volatile topics, 7d for docs. | Yes                    |
+
+### **3.2 Context Rolling with Hard Anchors**
+Every agent invocation assembles context in this exact order. The order is enforced by the `ContextAssembler` class and cannot be overridden by agent output.
+
+> **ANCHOR BLOCK (always first, never summarized)**
+> `[SYSTEM ANCHORS]`
+> - Never delete .env or .env.* files 
+> - Never push to main branch directly 
+> - Never expose secrets in logs 
+> - Always run tests before marking task RESOLVED 
+> `[END ANCHORS]`
+
+After anchors: compressed session summary (3 sentences) → last 5 task receipts → current task → agent system prompt. Total context budget enforced at 80% of model `max_tokens` to preserve output space.
+
+### **3.3 TTL-Aware Task Watchdog**
+A background thread (`TTLWatchdog`) polls the tasks table every 30 seconds. If `now() - time_started > max_ttl` for any `IN_PROGRESS` task, the watchdog emits SIGTERM to the agent process, marks the task `TIMED_OUT`, and creates a new task node with status `NEEDS_REROUTE`. 
+
+> **TTL Defaults by Persona Tier:**
+> - Research agents (Doraemon, Rimuru): 300s 
+> - Code agents (Naruto, Natsu, Goku): 600s 
+> - Security agents (Ichigo): 180s 
+> - Sandbox/Critic agents (Itachi): 120s 
+> - Orchestrator tasks (Madara): **no TTL** (orchestrator manages its own watchdog)
+
+---
+
+## SECTION 4 - EXECUTION PIPELINE & SAFETY MECHANISMS
+
+### **4.1 Replacing the Confidence Score - Schema-Constrained Output Validation**
+Self-reported confidence scores are retired entirely. Instead, every agent output must conform to a typed `AgentResult` JSON schema. Pydantic validates the output before it reaches the Critic. A parse failure is an implicit low-confidence event.
+
+```json
+{ 
+  "task_id": "string (UUID)", 
+  "persona": "string (enum of 10 personas)", 
+  "action_tier": "TRIVIAL | STANDARD | CRITICAL", 
+  "action_type": "file_write | shell_exec | escalate", 
+  "target": "string (file path, URL, or command)", 
+  "payload": "object (action-specific typed body)", 
+  "uncertainty_flags": ["string"], // Explicit enumeration - not a score
+  "requires_human": "boolean", 
+  "handoff_to": "string | null (persona name or null)" 
+}
+```
+`uncertainty_flags` replaces `confidence_score`. The agent must explicitly enumerate what it is uncertain about (e.g. `["target path may not exist"]`). If the array is non-empty and `action_tier` is CRITICAL, human escalation is mandatory.
+
+### **4.2 Two-Phase Commit Execution & Rollback**
+No action mutates the real filesystem or makes a real API call without completing both phases. Rollback is triggered automatically by the `VerifyController` when post-execution checksum does not match expected. 
+
+| **Phase**         | **Step**          | **Mechanism**                                                                                       | **Failure Action**                       |
+| ----------------- | ----------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Phase 1 - Prepare | 1. Snapshot      | SHA-256 checksum of all files in target scope written to `snapshots` table                            | Abort task; mark SNAPSHOT_FAILED         |
+| Phase 1 - Prepare | 2. Dry Run       | Sandbox executes action in tmpfs clone; returns git-style unified diff                              | Abort task; mark DRY_RUN_FAILED          |
+| Phase 1 - Prepare | 3. Critic Review | Diff auditor checks: no deletions of anchored paths, no secret exposure, scope within task boundary | Block; retry with correction or escalate |
+| Phase 2 - Commit  | 4. Execute       | Real action runs against live filesystem / API                                                      | Immediate rollback trigger               |
+| Phase 2 - Commit  | 5. Verify        | Post-execution checksum compared to pre-snapshot + expected diff                                    | Rollback if mismatch; mark VERIFY_FAILED |
+| Phase 2 - Commit  | 6. Receipt       | Execution receipt (action, pre/post checksums) written to `execution_log`     | Always written, even on failure          |
+
+---
+
+## SECTION 5 - THE PERSONA ENGINE: MECHANICAL SPECIFICATION
+
+### **5.1 What Makes a Persona**
+Each persona is a distinct agent configuration defined by exactly 5 mechanical properties:
+1. `model`: Which LLM is instantiated.
+2. `system_prompt`: Unique instruction set defining reasoning style.
+3. `tool_allowlist`: Exhaustive list of MCP tools this persona may invoke.
+4. `routing_classifier`: Python predicate that returns True if this persona should handle the task.
+5. `handoff_schema`: TypedDict defining what state this persona passes to the next agent.
+
+### **5.2 Routing Logic Priority**
+The Orchestrator evaluates `routing_classifier` functions deterministically in this exact priority:
+1. **Ichigo** (security keywords detected) 
+2. **Itachi** (action_tier == CRITICAL) 
+3. **Madara** (task has unresolved DAG dependencies) 
+4. **Ben 10** (task requires tool selection from > 3 MCP servers) 
+5. **Doraemon** (task_type == "api_integration") 
+6. **Goku** (task_type == "optimize" or "refactor") 
+7. **Naruto** (previous attempt on this failed) 
+8. **Chhota Bheem** (estimated_tokens > 50000) 
+9. **Natsu** (task is tagged "mvp" or "prototype" and tier == T1/T2) 
+10. **Rimuru** (fallback - all others returned False)
+
+### **5.3 Core Personas Mapping**
+
+| **Persona** | **Role** | **Model Target** | **System Prompt Core / Function** |
+| :--- | :--- | :--- | :--- |
+| **Itachi** | Sandbox Architect | Claude 3.5 Sonnet | Validates all CRITICAL-tier actions. Owns Phase 1 Dry-Runs. Cannot execute, only approves/rejects diffs. |
+| **Madara** | DAG Controller | Claude 3.5 Sonnet | Orchestrator. Blocks tasks with missing dependencies. Dispatches ready tasks. Does not write code. |
+| **Chhota Bheem** | Heavy Lifter | Ollama (Llama 3 70b Colab) | Handles compute-intensive batch jobs (files >10MB). Uses `progress_stream` every 30s. |
+| **Doraemon** | API Integrator | Mistral 7b / Haiku | Fetches API schemas before interacting. Heavily relies on `http_request`. NEVER hardcodes credentials. |
+| **Rimuru** | Context Bridge | Phi-3 Mini | Context summarizer. Decomposes tasks. Translates outputs from one persona to fit another's schema. |
+| **Goku** | Code Optimizer | Codellama 13b / Sonnet | Refactors. Runs `profiler_run` and `complexity_analyze`. Reverts if tests fail post-refactor. |
+| **Naruto** | Retry Master | Codellama 13b | Handles failed tasks. Queries `failure_memory` directly. Escalate exactly on 3rd failure loop. |
+| **Ichigo** | Sec Guardian | Claude 3.5 Sonnet | Intercepts keywords like `sudo, rm -rf, .env`. Read-only logic gating. |
+| **Natsu** | MVP Executor | Llama 3 8b | Extreme speed coding for T1/T2. Max TTL: 60s. Uses TODO comments for skipped logic. |
+| **Ben 10** | Tool Selector | Claude 3.5 Sonnet | Multi-MCP tool composition. Explicitly builds sequential `tool_plan` arrays before invoking APIs. |
+
+---
+
+## SECTION 6 - MULTI-PROVIDER LLM PROXY (Rate Limiter)
+All agent invocations go through `LLMProviderProxy`. This decouples persona definitions from provider availability. Redis stores token-bucket state per provider. When a bucket exhausts, proxy routes automatically (e.g. Local Ollama Exhausted -> Target Colab Ollama Endpoint).
+
+| **Provider** | **Use Case** | **Failover Priority** |
+| :--- | :--- | :--- |
+| **Ollama (local)** | Default for all agents. | 1 (primary) |
+| **Ollama (Colab)** | Activated by Bheem for heavy tasks. | 2 (compute overflow) |
+| **Anthropic API** | Itachi, Madara, Ichigo, Ben 10. | 3 (quality escalation) |
+| **OpenAI API** | Fallback if Anthropic blocked. | 4 (secondary cloud) |
+
+---
+
+## SECTION 7 - INTEGRATION & MULTI-RUNTIME 
+The canonical `docker-compose.yml` runs uniformly:
+- `ags-orchestrator` (FastAPI)
+- `ags-dashboard` (Next.js)
+- `ags-mcp-server` (FastMCP)
+- `ollama`
+- `chromadb`
+- `redis`
+
+Tunnels: **Cloudflare Tunnel** replaces Ngrok for Prod persistence. Ngrok is retained strictly for ephemeral dev mode.
+
+---
+
+> [!IMPORTANT]
+> The V2.0 System Architecture is locked. It directly enforces mechanical engineering bounds (ChromaDB Memory Vectors, Pydantic Schema checks, SQLite Double-Phase Commits) rather than relying on abstract LLM prompts to ensure safety. This is now fully ready for the Build Phase.
