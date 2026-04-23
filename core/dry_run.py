@@ -2,6 +2,7 @@ import hashlib
 import os
 import json
 import base64
+from sqlmodel import select
 from core.db import ExecutionSnapshot
 
 class SnapshotEngine:
@@ -56,7 +57,6 @@ class SnapshotEngine:
         return snapshot_hash
 
     def verify_execution(self, target_scope: str, expected_hash: str) -> bool:
-        # Check only hashes, not content
         blobs = {}
         if os.path.isfile(target_scope):
              blobs[target_scope] = {
@@ -70,11 +70,7 @@ class SnapshotEngine:
                         "hash": self.hash_file(filepath)
                     }
 
-        # This verification is slightly different from create_snapshot which includes content.
-        # But we need verify to be fast.
-        # A more robust verify would fetch the original snapshot and compare just hashes.
-
-        snapshot = self.db.get(ExecutionSnapshot, expected_hash)
+        snapshot = self.db.exec(select(ExecutionSnapshot).where(ExecutionSnapshot.snapshot_hash == expected_hash)).first()
         if not snapshot:
             return False
 
@@ -84,7 +80,6 @@ class SnapshotEngine:
             if filepath not in blobs or blobs[filepath]["hash"] != data["hash"]:
                 return False
 
-        # Check for newly added files not in the original snapshot
         for filepath in blobs.keys():
             if filepath not in original_blobs:
                 return False
@@ -92,7 +87,7 @@ class SnapshotEngine:
         return True
 
     def restore_from_snapshot(self, snapshot_hash: str) -> bool:
-        snapshot = self.db.get(ExecutionSnapshot, snapshot_hash)
+        snapshot = self.db.exec(select(ExecutionSnapshot).where(ExecutionSnapshot.snapshot_hash == snapshot_hash)).first()
         if not snapshot:
             return False
 

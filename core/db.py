@@ -1,6 +1,7 @@
 from sqlmodel import Field, SQLModel, create_engine, Session, text
 from typing import Optional
 import os
+import uuid
 
 class Anchor(SQLModel, table=True):
     __tablename__ = "anchors"
@@ -16,11 +17,15 @@ class DAGTask(SQLModel, table=True):
     max_ttl: int
     parent_task_ids_json: str
     task_payload: str = Field(default="")
+    task_type: str = Field(default="standard")
+    action_tier: str = Field(default="STANDARD")
+    retry_count: int = Field(default=0)
     checkpoint_hash: Optional[str] = None
 
 class ExecutionSnapshot(SQLModel, table=True):
     __tablename__ = "snapshots"
-    snapshot_hash: str = Field(primary_key=True)
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    snapshot_hash: str = Field(index=True)
     target_scope: str
     blobs_json: str
 

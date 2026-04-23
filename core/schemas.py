@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Any, Dict
 from enum import Enum
 
@@ -42,5 +42,10 @@ class AgentResult(BaseModel):
     handoff_to: Optional[PersonaEnum] = None
 
 class HandoffPayload(BaseModel):
+    model_config = ConfigDict(strict=True)
+
     state: Dict[str, Any]
     reason: str
+    context_str: Optional[str] = None
+    error_trace: Optional[str] = None
+    target_node: Optional[str] = None
