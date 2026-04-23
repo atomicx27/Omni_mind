@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  orchestrator:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - REDIS_HOST=redis
+      - DB_URL=sqlite:///database.db
+    depends_on:
+      - redis
+    command: python run.py
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DB_URL=sqlite:///database.db
+    command: uvicorn api:app --host 0.0.0.0 --port 8000
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"

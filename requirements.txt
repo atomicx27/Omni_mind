@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+sqlmodel
+chromadb
+sentence-transformers
+redis
+fastmcp
+pydantic
