@@ -32,7 +32,7 @@ class MadaraOrchestrator:
         if not task.parent_task_ids_json == "[]":
             return PersonaEnum.MADARA
 
-        if task.action_tier == "CRITICAL":
+        if task.action_tier == ActionTierEnum.CRITICAL.value:
             return PersonaEnum.ITACHI
         elif task.task_type == "mcp_tool_chain":
             return PersonaEnum.BEN10
@@ -44,7 +44,7 @@ class MadaraOrchestrator:
             return PersonaEnum.NARUTO
         elif task.task_type == "heavy_compute":
             return PersonaEnum.CHHOTA_BHEEM
-        elif task.task_type in ["mvp", "prototype"] and task.action_tier in ["TRIVIAL", "STANDARD"]:
+        elif task.task_type in ["mvp", "prototype"] and task.action_tier in [ActionTierEnum.TRIVIAL.value, ActionTierEnum.STANDARD.value]:
             return PersonaEnum.NATSU
 
         return PersonaEnum.RIMURU
