@@ -32,19 +32,19 @@ class MadaraOrchestrator:
         if not task.parent_task_ids_json == "[]":
             return PersonaEnum.MADARA
 
-        if "critical" in payload.lower():
+        if task.action_tier == "CRITICAL":
             return PersonaEnum.ITACHI
-        elif "tool" in payload.lower() or "mcp" in payload.lower():
+        elif task.task_type == "mcp_tool_chain":
             return PersonaEnum.BEN10
-        elif "api" in payload.lower() or "fetch" in payload.lower():
+        elif task.task_type == "api_integration":
             return PersonaEnum.DORAEMON
-        elif "optimize" in payload.lower() or "refactor" in payload.lower():
+        elif task.task_type in ["optimize", "refactor"]:
             return PersonaEnum.GOKU
-        elif "error" in payload.lower() or "fix" in payload.lower():
+        elif task.retry_count > 0:
             return PersonaEnum.NARUTO
-        elif "heavy" in payload.lower() or "colab" in payload.lower():
+        elif task.task_type == "heavy_compute":
             return PersonaEnum.CHHOTA_BHEEM
-        elif "mvp" in payload.lower() or "prototype" in payload.lower():
+        elif task.task_type in ["mvp", "prototype"] and task.action_tier in ["TRIVIAL", "STANDARD"]:
             return PersonaEnum.NATSU
 
         return PersonaEnum.RIMURU
