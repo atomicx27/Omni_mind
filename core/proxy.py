@@ -15,9 +15,7 @@ class LLMProviderProxy:
 
         self.providers = [
             {"name": "ollama_local", "priority": 1, "tokens_per_minute": 10000, "url": ollama_url},
-            {"name": "ollama_colab", "priority": 2, "tokens_per_minute": 50000, "url": "http://colab_url/api/generate"},
-            {"name": "anthropic", "priority": 3, "tokens_per_minute": 5000},
-            {"name": "openai", "priority": 4, "tokens_per_minute": 5000}
+            {"name": "ollama_colab", "priority": 2, "tokens_per_minute": 50000, "url": "http://colab_url/api/generate"}
         ]
 
     def _check_rate_limit(self, provider_name: str, requested_tokens: int) -> bool:
@@ -51,13 +49,11 @@ class LLMProviderProxy:
                 self.redis.set(bucket_key, current_tokens - requested_tokens)
                 return True
         except redis.ConnectionError:
-            # Fallback if Redis is not running
             return True
 
         return False
 
     def get_providers(self, requested_tokens: int = 100) -> List[Dict[str, Any]]:
-        """Returns all providers that have tokens, sorted by priority"""
         valid_providers = []
         for provider in sorted(self.providers, key=lambda x: x["priority"]):
             if self._check_rate_limit(provider["name"], requested_tokens):
@@ -65,7 +61,6 @@ class LLMProviderProxy:
         return valid_providers
 
     def _clean_json_response(self, response_str: str) -> str:
-        """Removes markdown formatting from JSON responses."""
         response_str = response_str.strip()
         if response_str.startswith("```json"):
             response_str = response_str[7:]
@@ -78,7 +73,6 @@ class LLMProviderProxy:
         return response_str.strip()
 
     def generate_completion(self, model: str, prompt: str, system_prompt: str = "") -> str:
-        # Estimate tokens roughly
         estimated_tokens = len(prompt) // 4 + len(system_prompt) // 4
         valid_providers = self.get_providers(estimated_tokens)
 
@@ -108,9 +102,8 @@ class LLMProviderProxy:
                 except Exception as e:
                     print(f"Error calling {provider['name']}: {e}")
                     last_error = e
-                    continue # Try next provider
+                    continue
             else:
-                # Not implemented providers (anthropic, openai)
                 print(f"Provider {provider['name']} not implemented")
                 continue
 
