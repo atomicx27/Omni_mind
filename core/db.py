@@ -30,17 +30,17 @@ class ExecutionLog(SQLModel, table=True):
     pre_checksum: str
     post_checksum: str
     status: str
+    persona_executed: Optional[str] = None
+    rollback_status: Optional[str] = None
 
 db_url = os.getenv("DB_URL", "sqlite:///database.db")
-engine = create_engine(db_url, connect_args={"check_same_thread": False})
-
-with engine.connect() as con:
-    # Only try to enable WAL if using sqlite
-    if db_url.startswith("sqlite"):
-        con.execute(text("PRAGMA journal_mode=WAL;"))
+engine = create_engine(db_url, connect_args={"check_same_thread": False} if db_url.startswith("sqlite") else {})
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+    if db_url.startswith("sqlite"):
+        with engine.connect() as con:
+            con.execute(text("PRAGMA journal_mode=WAL;"))
 
 def get_session():
     with Session(engine) as session:

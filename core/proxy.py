@@ -1,7 +1,8 @@
 import redis
 import time
 import os
-from typing import Optional, Dict, Any
+import re
+from typing import Optional, Dict, Any, List
 import urllib.request
 import json
 
@@ -55,42 +56,62 @@ class LLMProviderProxy:
 
         return False
 
-    def get_provider(self, requested_tokens: int = 100) -> Optional[Dict[str, Any]]:
+    def get_providers(self, requested_tokens: int = 100) -> List[Dict[str, Any]]:
+        """Returns all providers that have tokens, sorted by priority"""
+        valid_providers = []
         for provider in sorted(self.providers, key=lambda x: x["priority"]):
             if self._check_rate_limit(provider["name"], requested_tokens):
-                return provider
+                valid_providers.append(provider)
+        return valid_providers
 
-        return None
+    def _clean_json_response(self, response_str: str) -> str:
+        """Removes markdown formatting from JSON responses."""
+        response_str = response_str.strip()
+        if response_str.startswith("```json"):
+            response_str = response_str[7:]
+        elif response_str.startswith("```"):
+            response_str = response_str[3:]
+
+        if response_str.endswith("```"):
+            response_str = response_str[:-3]
+
+        return response_str.strip()
 
     def generate_completion(self, model: str, prompt: str, system_prompt: str = "") -> str:
         # Estimate tokens roughly
         estimated_tokens = len(prompt) // 4 + len(system_prompt) // 4
-        provider = self.get_provider(estimated_tokens)
+        valid_providers = self.get_providers(estimated_tokens)
 
-        if not provider:
+        if not valid_providers:
             raise Exception("No available LLM providers due to rate limits.")
 
-        if provider["name"].startswith("ollama"):
-            data = {
-                "model": model,
-                "prompt": prompt,
-                "system": system_prompt,
-                "stream": False
-            }
+        last_error = None
+        for provider in valid_providers:
+            if provider["name"].startswith("ollama"):
+                data = {
+                    "model": model,
+                    "prompt": prompt,
+                    "system": system_prompt,
+                    "stream": False
+                }
 
-            req = urllib.request.Request(
-                provider["url"],
-                data=json.dumps(data).encode('utf-8'),
-                headers={'Content-Type': 'application/json'}
-            )
+                req = urllib.request.Request(
+                    provider.get("url", ""),
+                    data=json.dumps(data).encode('utf-8'),
+                    headers={'Content-Type': 'application/json'}
+                )
 
-            try:
-                with urllib.request.urlopen(req) as response:
-                    result = json.loads(response.read().decode('utf-8'))
-                    return result.get("response", "")
-            except Exception as e:
-                print(f"Error calling {provider['name']}: {e}")
-                # Fallback mock for demonstration if ollama is not running locally
-                return f'{{"task_id": "mock", "persona": "rimuru", "action_tier": "TRIVIAL", "action_type": "file_write", "target": "mock", "payload": {{"msg": "Mock LLM Response"}}, "uncertainty_flags": [], "requires_human": false}}'
-        else:
-            raise NotImplementedError(f"Provider {provider['name']} not implemented")
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        result = json.loads(response.read().decode('utf-8'))
+                        return self._clean_json_response(result.get("response", ""))
+                except Exception as e:
+                    print(f"Error calling {provider['name']}: {e}")
+                    last_error = e
+                    continue # Try next provider
+            else:
+                # Not implemented providers (anthropic, openai)
+                print(f"Provider {provider['name']} not implemented")
+                continue
+
+        raise Exception(f"All providers failed. Last error: {last_error}")

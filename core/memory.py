@@ -1,5 +1,6 @@
 import chromadb
 from sentence_transformers import SentenceTransformer
+import hashlib
 
 class FailureMemory:
     def __init__(self, db_path="./chroma_db"):
@@ -11,7 +12,7 @@ class FailureMemory:
     def add_failure(self, error_message: str, stack_trace: str, resolution_note: str = ""):
         text = f"{error_message}\n{stack_trace}"
         embedding = self.model.encode(text).tolist()
-        doc_id = str(hash(text))
+        doc_id = hashlib.sha256(text.encode()).hexdigest()[:16]
 
         self.collection.add(
             embeddings=[embedding],
@@ -32,7 +33,7 @@ class FailureMemory:
 
         if results and results['distances'] and len(results['distances'][0]) > 0:
             dist = results['distances'][0][0]
-            similarity = 1.0 - (dist / 2.0)
+            similarity = 1.0 - dist
 
             if similarity >= self.similarity_threshold:
                 return {

@@ -12,7 +12,7 @@ class ItachiAuditor:
         system_prompt = "You are Itachi, the Sandbox Auditor. Analyze diffs for safety."
         prompt = f"Task ID: {task_id}\nDiff: {diff_output}\nIs this safe?"
 
-        response_str = self.proxy.generate_completion(model="llama3", prompt=prompt, system_prompt=system_prompt)
+        response_str = self.proxy.generate_completion(model="claude-3.5-sonnet", prompt=prompt, system_prompt=system_prompt)
 
         try:
             parsed = json.loads(response_str)

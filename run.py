@@ -1,10 +1,32 @@
-from core.db import create_db_and_tables, engine, get_session
+from core.db import create_db_and_tables, engine, get_session, DAGTask
 from core.watchdog import TTLWatchdog
 from core.memory import FailureMemory
 from core.proxy import LLMProviderProxy
 from agents.madara import MadaraOrchestrator
 import time
 import os
+
+task_retries = {} # task_id -> retry_count
+
+def handle_timeout(task_id: str):
+    print(f"Task {task_id} timed out.")
+    retries = task_retries.get(task_id, 0)
+
+    session_generator = get_session()
+    db_session = next(session_generator)
+    task = db_session.get(DAGTask, task_id)
+
+    if task:
+        if retries >= 3:
+            print(f"Task {task_id} exceeded max retries. Escalating to human.")
+            task.status = "ESCALATED"
+        else:
+            print(f"Re-queuing task {task_id}. Retry {retries + 1}/3")
+            task.status = "NEEDS_REROUTE"
+            task_retries[task_id] = retries + 1
+
+        db_session.add(task)
+        db_session.commit()
 
 def main():
     print("Initializing Sovereign AGI Version 2.0 Framework...")
@@ -35,11 +57,21 @@ def main():
             if ready_tasks:
                 for task in ready_tasks:
                     print(f"Task {task.task_id} is ready for processing.")
+
+                    # Register with watchdog if it has a TTL
+                    if task.max_ttl > 0:
+                         watchdog.register_task(task.task_id, task.max_ttl, handle_timeout)
+
                     result = orchestrator.route_task(task)
                     print(f"Routing result: {result}")
 
                     task.status = "RESOLVED"
                     db_session.add(task)
+
+                    # Task completed, unregister from watchdog
+                    if task.max_ttl > 0:
+                        watchdog.complete_task(task.task_id)
+
                 db_session.commit()
 
             time.sleep(1)

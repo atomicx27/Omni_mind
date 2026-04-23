@@ -1,8 +1,13 @@
 from typing import Dict, Any, List
 import os
+import subprocess
 from fastmcp import FastMCP
 
 mcp = FastMCP("AGS_Server")
+
+# Create required directories at startup
+os.makedirs("./sandbox", exist_ok=True)
+os.makedirs("./tmp", exist_ok=True)
 
 allowed_paths = [
     os.path.abspath("./sandbox"),
@@ -41,6 +46,27 @@ def write_file(path: str, content: str) -> str:
         return "Success"
     except Exception as e:
         return f"Error writing file: {str(e)}"
+
+@mcp.tool()
+def run_shell(command: str, cwd: str = "./sandbox") -> str:
+    """Execute a shell command securely within allowed paths."""
+    if not _is_path_allowed(cwd):
+        return f"Error: Access denied to directory {cwd}"
+
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        return f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    except subprocess.TimeoutExpired:
+        return "Error: Command timed out"
+    except Exception as e:
+        return f"Error executing command: {str(e)}"
 
 if __name__ == "__main__":
     print("Starting FastMCP server with path actuation limits...")
