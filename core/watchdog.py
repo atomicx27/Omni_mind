@@ -46,6 +46,7 @@ class TTLWatchdog:
                     tasks_to_remove.append(task_id)
 
             for task_id in tasks_to_remove:
-                del self.tasks[task_id]
+                if task_id in self.tasks:
+                    del self.tasks[task_id]
 
             time.sleep(self.check_interval)

@@ -11,7 +11,7 @@ class GokuOptimizer:
         system_prompt = "You are Goku, the Code Optimizer. Refactor code."
         prompt = f"Task ID: {task_id}\nCode: {code}\nOptimize it."
 
-        response_str = self.proxy.generate_completion(model="llama3", prompt=prompt, system_prompt=system_prompt)
+        response_str = self.proxy.generate_completion(model="codellama", prompt=prompt, system_prompt=system_prompt)
 
         try:
             parsed = json.loads(response_str)
@@ -37,7 +37,7 @@ class NatsuMVP:
         system_prompt = "You are Natsu, the MVP Executor. Write extreme speed code."
         prompt = f"Task ID: {task_id}\nPrompt: {prompt_text}\nWrite MVP code."
 
-        response_str = self.proxy.generate_completion(model="llama3", prompt=prompt, system_prompt=system_prompt)
+        response_str = self.proxy.generate_completion(model="codellama", prompt=prompt, system_prompt=system_prompt)
 
         try:
             parsed = json.loads(response_str)

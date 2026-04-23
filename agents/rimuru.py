@@ -11,7 +11,7 @@ class RimuruBridge:
         system_prompt = "You are Rimuru, the Context Bridge. Summarize context."
         prompt = f"Task ID: {task_id}\nContext: {context}\nSummarize it."
 
-        response_str = self.proxy.generate_completion(model="llama3", prompt=prompt, system_prompt=system_prompt)
+        response_str = self.proxy.generate_completion(model="phi3:mini", prompt=prompt, system_prompt=system_prompt)
 
         try:
             parsed = json.loads(response_str)

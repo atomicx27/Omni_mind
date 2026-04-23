@@ -29,7 +29,7 @@ class NarutoHealer:
             system_prompt = "You are Naruto, the Self-Healer. Generate code fixes based on error traces."
             prompt = f"Error: {error_message}\nTrace: {stack_trace}\nFix it."
 
-            response_str = self.proxy.generate_completion(model="llama3", prompt=prompt, system_prompt=system_prompt)
+            response_str = self.proxy.generate_completion(model="codellama", prompt=prompt, system_prompt=system_prompt)
 
             try:
                 parsed = json.loads(response_str)

@@ -11,7 +11,7 @@ class DoraemonIntegrator:
         system_prompt = "You are Doraemon, the API Integrator. Extract data from the given URL."
         prompt = f"Task ID: {task_id}\nURL: {url}\nExtract the data."
 
-        response_str = self.proxy.generate_completion(model="llama3", prompt=prompt, system_prompt=system_prompt)
+        response_str = self.proxy.generate_completion(model="mistral", prompt=prompt, system_prompt=system_prompt)
 
         try:
             parsed = json.loads(response_str)
@@ -37,7 +37,7 @@ class Ben10Compositor:
         system_prompt = "You are Ben 10, the MCP Tool Compositor. Construct a tool execution plan."
         prompt = f"Task ID: {task_id}\nTools: {tools}\nConstruct plan."
 
-        response_str = self.proxy.generate_completion(model="llama3", prompt=prompt, system_prompt=system_prompt)
+        response_str = self.proxy.generate_completion(model="claude-3.5-sonnet", prompt=prompt, system_prompt=system_prompt)
 
         try:
             parsed = json.loads(response_str)

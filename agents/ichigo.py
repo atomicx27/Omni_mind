@@ -36,19 +36,20 @@ class IchigoSecurity:
         system_prompt = "You are Ichigo, the Security Guardian. Perform semantic security check on commands."
         prompt = f"Task ID: {task_id}\nCommand: {command}\nIs it semantically safe?"
 
-        response_str = self.proxy.generate_completion(model="llama3", prompt=prompt, system_prompt=system_prompt)
+        response_str = self.proxy.generate_completion(model="claude-3.5-sonnet", prompt=prompt, system_prompt=system_prompt)
 
         try:
             parsed = json.loads(response_str)
             return AgentResult(**parsed)
         except Exception as e:
+            # Fail closed on LLM parse errors
             return AgentResult(
                 task_id=task_id,
                 persona=self.persona,
-                action_tier=ActionTierEnum.TRIVIAL,
-                action_type=ActionTypeEnum.SHELL_EXEC,
+                action_tier=ActionTierEnum.CRITICAL,
+                action_type=ActionTypeEnum.ESCALATE,
                 target=command,
-                payload={"safe": True},
-                uncertainty_flags=["Failed to parse LLM response"],
-                requires_human=False
+                payload={"safe": False},
+                uncertainty_flags=["Failed to parse LLM response, failing closed"],
+                requires_human=True
             )
