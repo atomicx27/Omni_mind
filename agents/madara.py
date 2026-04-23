@@ -24,34 +24,27 @@ class MadaraOrchestrator:
         return ready_tasks
 
     def _routing_classifier(self, task: DAGTask) -> PersonaEnum:
-        # Deterministic routing logic priority
-        payload = task.assigned_persona # Mocking task payload content for routing
+        payload = task.task_payload
 
         if re.search(r"sudo|rm -rf|\.env", payload, re.IGNORECASE):
             return PersonaEnum.ICHIGO
 
-        # Mocking task attributes for demonstration
-        task_type = "standard"
-        action_tier = ActionTierEnum.STANDARD
-        estimated_tokens = 1000
-        previous_failures = 0
-        requires_mcp_tools = False
-
-        if action_tier == ActionTierEnum.CRITICAL:
-            return PersonaEnum.ITACHI
-        elif not task.parent_task_ids_json == "[]": # has unresolved parents -> madara (but shouldn't be polled)
+        if not task.parent_task_ids_json == "[]":
             return PersonaEnum.MADARA
-        elif requires_mcp_tools:
+
+        if "critical" in payload.lower():
+            return PersonaEnum.ITACHI
+        elif "tool" in payload.lower() or "mcp" in payload.lower():
             return PersonaEnum.BEN10
-        elif task_type == "api_integration":
+        elif "api" in payload.lower() or "fetch" in payload.lower():
             return PersonaEnum.DORAEMON
-        elif task_type in ["optimize", "refactor"]:
+        elif "optimize" in payload.lower() or "refactor" in payload.lower():
             return PersonaEnum.GOKU
-        elif previous_failures > 0:
+        elif "error" in payload.lower() or "fix" in payload.lower():
             return PersonaEnum.NARUTO
-        elif estimated_tokens > 50000:
+        elif "heavy" in payload.lower() or "colab" in payload.lower():
             return PersonaEnum.CHHOTA_BHEEM
-        elif task_type in ["mvp", "prototype"] and action_tier in [ActionTierEnum.TRIVIAL, ActionTierEnum.STANDARD]:
+        elif "mvp" in payload.lower() or "prototype" in payload.lower():
             return PersonaEnum.NATSU
 
         return PersonaEnum.RIMURU

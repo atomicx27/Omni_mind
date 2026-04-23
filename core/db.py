@@ -15,6 +15,7 @@ class DAGTask(SQLModel, table=True):
     time_started: float
     max_ttl: int
     parent_task_ids_json: str
+    task_payload: str = Field(default="")
     checkpoint_hash: Optional[str] = None
 
 class ExecutionSnapshot(SQLModel, table=True):

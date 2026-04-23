@@ -5,7 +5,6 @@ from fastmcp import FastMCP
 
 mcp = FastMCP("AGS_Server")
 
-# Create required directories at startup
 os.makedirs("./sandbox", exist_ok=True)
 os.makedirs("./tmp", exist_ok=True)
 
@@ -23,7 +22,6 @@ def _is_path_allowed(path: str) -> bool:
 
 @mcp.tool()
 def read_file(path: str) -> str:
-    """Read contents of a file securely."""
     if not _is_path_allowed(path):
         return f"Error: Access denied to {path}"
 
@@ -35,7 +33,6 @@ def read_file(path: str) -> str:
 
 @mcp.tool()
 def write_file(path: str, content: str) -> str:
-    """Write contents to a file securely."""
     if not _is_path_allowed(path):
         return f"Error: Access denied to {path}"
 
@@ -49,9 +46,11 @@ def write_file(path: str, content: str) -> str:
 
 @mcp.tool()
 def run_shell(command: str, cwd: str = "./sandbox") -> str:
-    """Execute a shell command securely within allowed paths."""
     if not _is_path_allowed(cwd):
         return f"Error: Access denied to directory {cwd}"
+
+    if "../" in command or command.startswith("/"):
+        return "Error: Command attempts path traversal or uses absolute paths."
 
     try:
         result = subprocess.run(

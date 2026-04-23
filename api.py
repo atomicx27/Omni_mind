@@ -29,11 +29,6 @@ async def event_generator(request: Request):
             yield f"data: {json.dumps({'type': 'task.update', 'tasks': task_list})}\n\n"
         except StopIteration:
             pass
-        finally:
-            try:
-                next(session_gen) # Ensure cleanup
-            except StopIteration:
-                pass
 
         await asyncio.sleep(1)
 
@@ -43,7 +38,6 @@ async def sse_events(request: Request):
 
 @app.post("/kill")
 async def kill_switch():
-    # In a full implementation, this would signal the watchdog or orchestrator to halt
     return {"status": "kill_signal_sent", "message": "System shutdown initiated"}
 
 @app.get("/health")

@@ -1,6 +1,7 @@
 import hashlib
 import os
 import json
+import base64
 from core.db import ExecutionSnapshot
 
 class SnapshotEngine:
@@ -19,12 +20,10 @@ class SnapshotEngine:
 
     def read_file_content(self, filepath: str) -> str:
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                return f.read()
+            with open(filepath, 'rb') as f:
+                buf = f.read()
+                return base64.b64encode(buf).decode('utf-8')
         except FileNotFoundError:
-            return ""
-        except UnicodeDecodeError:
-            # Skip binary files
             return ""
 
     def create_snapshot(self, target_scope: str) -> str:
@@ -57,23 +56,40 @@ class SnapshotEngine:
         return snapshot_hash
 
     def verify_execution(self, target_scope: str, expected_hash: str) -> bool:
-        # Don't save this temporary snapshot to DB
+        # Check only hashes, not content
         blobs = {}
         if os.path.isfile(target_scope):
              blobs[target_scope] = {
-                "hash": self.hash_file(target_scope),
-                "content": self.read_file_content(target_scope)
+                "hash": self.hash_file(target_scope)
             }
         elif os.path.isdir(target_scope):
             for root, _, files in os.walk(target_scope):
                 for file in files:
                     filepath = os.path.join(root, file)
                     blobs[filepath] = {
-                        "hash": self.hash_file(filepath),
-                        "content": self.read_file_content(filepath)
+                        "hash": self.hash_file(filepath)
                     }
-        current_hash = hashlib.sha256(json.dumps(blobs, sort_keys=True).encode()).hexdigest()
-        return current_hash == expected_hash
+
+        # This verification is slightly different from create_snapshot which includes content.
+        # But we need verify to be fast.
+        # A more robust verify would fetch the original snapshot and compare just hashes.
+
+        snapshot = self.db.get(ExecutionSnapshot, expected_hash)
+        if not snapshot:
+            return False
+
+        original_blobs = json.loads(snapshot.blobs_json)
+
+        for filepath, data in original_blobs.items():
+            if filepath not in blobs or blobs[filepath]["hash"] != data["hash"]:
+                return False
+
+        # Check for newly added files not in the original snapshot
+        for filepath in blobs.keys():
+            if filepath not in original_blobs:
+                return False
+
+        return True
 
     def restore_from_snapshot(self, snapshot_hash: str) -> bool:
         snapshot = self.db.get(ExecutionSnapshot, snapshot_hash)
@@ -86,7 +102,7 @@ class SnapshotEngine:
             content = data.get("content", "")
             if content:
                 os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-                with open(filepath, 'w', encoding='utf-8') as f:
-                    f.write(content)
+                with open(filepath, 'wb') as f:
+                    f.write(base64.b64decode(content))
 
         return True
