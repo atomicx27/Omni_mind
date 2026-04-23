@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+database.db
+database.db-*
+chroma_db/
+*.log
