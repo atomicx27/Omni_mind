@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Union
 from enum import Enum
 
 class PersonaEnum(str, Enum):
@@ -41,11 +41,25 @@ class AgentResult(BaseModel):
     requires_human: bool
     handoff_to: Optional[PersonaEnum] = None
 
-class HandoffPayload(BaseModel):
+class BaseHandoff(BaseModel):
     model_config = ConfigDict(strict=True)
-
-    state: Dict[str, Any]
     reason: str
     context_str: Optional[str] = None
-    error_trace: Optional[str] = None
-    target_node: Optional[str] = None
+
+class NatsuToGokuHandoff(BaseHandoff):
+    target_node: str
+    mvp_code: str
+
+class NarutoToItachiHandoff(BaseHandoff):
+    target_node: str
+    fixed_code: str
+    error_trace: str
+
+class DoraemonToBen10Handoff(BaseHandoff):
+    target_node: str
+    api_schema: Dict[str, Any]
+
+class GenericHandoff(BaseHandoff):
+    state: Dict[str, Any]
+
+HandoffPayload = Union[NatsuToGokuHandoff, NarutoToItachiHandoff, DoraemonToBen10Handoff, GenericHandoff]
