@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 import os
 import subprocess
+import shlex
 from fastmcp import FastMCP
 
 mcp = FastMCP("AGS_Server")
@@ -16,7 +17,7 @@ allowed_paths = [
 def _is_path_allowed(path: str) -> bool:
     abs_path = os.path.abspath(path)
     for allowed in allowed_paths:
-        if abs_path.startswith(allowed):
+        if abs_path == allowed or abs_path.startswith(allowed + os.sep):
             return True
     return False
 
@@ -54,8 +55,8 @@ def run_shell(command: str, cwd: str = "./sandbox") -> str:
 
     try:
         result = subprocess.run(
-            command,
-            shell=True,
+            shlex.split(command),
+            shell=False,
             cwd=cwd,
             capture_output=True,
             text=True,

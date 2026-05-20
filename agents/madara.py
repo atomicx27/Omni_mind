@@ -15,25 +15,22 @@ class MadaraOrchestrator:
 
     def poll_tasks(self) -> List[DAGTask]:
         tasks = self.db.exec(select(DAGTask).where(DAGTask.status == "PENDING")).all()
-        if not tasks:
-            return []
 
         all_parent_ids = set()
         task_to_parents = {}
         for task in tasks:
             p_ids = json.loads(task.parent_task_ids_json)
-            task_to_parents[task.task_id] = p_ids
             all_parent_ids.update(p_ids)
+            task_to_parents[task.task_id] = p_ids
 
-        parent_status_map = {}
-        if all_parent_ids:
-            parents = self.db.exec(select(DAGTask).where(DAGTask.task_id.in_(list(all_parent_ids)))).all()
-            parent_status_map = {p.task_id: p.status for p in parents}
+        # Batch fetch all parents
+        all_parents = self.db.exec(select(DAGTask).where(DAGTask.task_id.in_(list(all_parent_ids)))).all()
+        parent_status_map = {p.task_id: p.status for p in all_parents}
 
         ready_tasks = []
         for task in tasks:
             parent_ids = task_to_parents[task.task_id]
-            if all(parent_status_map[pid] == "RESOLVED" for pid in parent_ids if pid in parent_status_map):
+            if all(parent_status_map.get(pid) == "RESOLVED" for pid in parent_ids):
                 ready_tasks.append(task)
         return ready_tasks
 
