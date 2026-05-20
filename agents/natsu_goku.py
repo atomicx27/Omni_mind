@@ -1,4 +1,5 @@
 import json
+import re
 from core.schemas import AgentResult, PersonaEnum, ActionTierEnum, ActionTypeEnum
 from core.proxy import LLMProviderProxy
 
@@ -43,13 +44,24 @@ class NatsuMVP:
             parsed = json.loads(response_str)
             return AgentResult(**parsed)
         except Exception as e:
+            # Fallback: Try to extract code from markdown or raw response
+            extracted_code = "# TODO: implement\npass"
+
+            # Try to find code in triple backticks
+            code_match = re.search(r"```(?:python)?\n(.*?)\n```", response_str, re.DOTALL)
+            if code_match:
+                extracted_code = code_match.group(1)
+            elif response_str.strip():
+                # If no code blocks but response has text, use it as raw code
+                extracted_code = response_str.strip()
+
             return AgentResult(
                 task_id=task_id,
                 persona=self.persona,
                 action_tier=ActionTierEnum.STANDARD,
                 action_type=ActionTypeEnum.FILE_WRITE,
                 target="mvp_code",
-                payload={"code": "# TODO: implement\npass"},
-                uncertainty_flags=["Failed to parse LLM response"],
+                payload={"code": extracted_code},
+                uncertainty_flags=["Failed to parse LLM response, extracted from raw"],
                 requires_human=False
             )
