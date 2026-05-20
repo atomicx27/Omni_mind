@@ -16,7 +16,7 @@ allowed_paths = [
 def _is_path_allowed(path: str) -> bool:
     abs_path = os.path.abspath(path)
     for allowed in allowed_paths:
-        if abs_path.startswith(allowed):
+        if abs_path == allowed or abs_path.startswith(allowed + os.sep):
             return True
     return False
 
